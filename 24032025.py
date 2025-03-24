@@ -2,66 +2,85 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 
-def apply_filter(img, mask_type='lowpass', sigma=10):
-    img_out = np.zeros_like(img, dtype=np.float32)
+# Function to apply frequency domain filtering
+def apply_frequency_filter(image, filter_type):
+    # Convert image to float32 for FFT
+    image_float = np.float32(image)
+    
+    # Perform FFT and shift zero frequency to the center
+    fft = np.fft.fft2(image_float)
+    fft_shifted = np.fft.fftshift(fft)
+    
+    # Create a 3x3 mask
+    rows, cols = image.shape
+    mask = np.zeros((rows, cols), np.float32)
+    
+    # Define the 3x3 mask center
+    center_row, center_col = rows // 2, cols // 2
+    mask[center_row-1:center_row+2, center_col-1:center_col+2] = 1  # 3x3 mask
+    
+    # Apply filter type
+    if filter_type == "lowpass":
+        mask = mask  # Low Pass Filter (3x3 mask)
+    elif filter_type == "highpass":
+        mask = 1 - mask  # High Pass Filter (3x3 mask)
+    elif filter_type == "lowpass_gaussian":
+        mask = cv2.GaussianBlur(mask, (3, 3), 0)  # Lowpass Gaussian Filter
+    elif filter_type == "highpass_gaussian":
+        mask = 1 - cv2.GaussianBlur(mask, (3, 3), 0)  # Highpass Gaussian Filter
+    
+    # Apply the mask to the shifted FFT
+    fft_filtered = fft_shifted * mask
+    
+    # Shift back and perform inverse FFT
+    fft_ishifted = np.fft.ifftshift(fft_filtered)
+    image_filtered = np.fft.ifft2(fft_ishifted)
+    image_filtered = np.abs(image_filtered)  # Take the magnitude
+    
+    return image_filtered
 
-    for i in range(3):
-        channel = img[:, :, i]
-        f = np.fft.fft2(channel)
-        fshift = np.fft.fftshift(f)
+# Read the input image
+image_path = "image.jpg"  # Ensure the image path is correct
+image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)  # Read as grayscale
 
-        rows, cols = channel.shape
-        crow, ccol = rows // 2, cols // 2
+# Check if the image is loaded correctly
+if image is None:
+    print(f"Error: Unable to load image from {image_path}. Please check the file path.")
+    exit()
 
-        mask = np.ones((rows, cols), dtype=np.float32)
+# Apply filters
+image_lowpass = apply_frequency_filter(image, "lowpass")
+image_highpass = apply_frequency_filter(image, "highpass")
+image_lowpass_gaussian = apply_frequency_filter(image, "lowpass_gaussian")
+image_highpass_gaussian = apply_frequency_filter(image, "highpass_gaussian")
 
-        if mask_type == 'lowpass':
-            mask[:] = 0
-            mask[crow-1:crow+2, ccol-1:ccol+2] = 1
-
-        elif mask_type == 'highpass':
-            mask[crow-1:crow+2, ccol-1:ccol+2] = 0
-
-        elif mask_type == 'gaussian_lowpass':
-            y, x = np.ogrid[:rows, :cols]
-            d2 = (x - ccol)**2 + (y - crow)**2
-            mask = np.exp(-d2 / (2 * sigma**2))
-
-        elif mask_type == 'gaussian_highpass':
-            y, x = np.ogrid[:rows, :cols]
-            d2 = (x - ccol)**2 + (y - crow)**2
-            mask = 1 - np.exp(-d2 / (2 * sigma**2))
-
-        fshift_filtered = fshift * mask
-
-        f_ishift = np.fft.ifftshift(fshift_filtered)
-        img_back = np.fft.ifft2(f_ishift)
-        img_back = np.abs(img_back)
-
-        img_out[:, :, i] = img_back
-
-    return np.clip(img_out, 0, 255).astype(np.uint8)
-
-img_bgr = cv2.imread('image.jpg')
-if img_bgr is None:
-    raise FileNotFoundError("Make sure 'image.jpg' is in the same directory.")
-img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
-
-lowpass = apply_filter(img_rgb, 'lowpass')
-highpass = apply_filter(img_rgb, 'highpass')
-gauss_lp = apply_filter(img_rgb, 'gaussian_lowpass', sigma=10)
-gauss_hp = apply_filter(img_rgb, 'gaussian_highpass', sigma=10)
-
+# Display the results
 plt.figure(figsize=(12, 8))
-plt.subplot(231), plt.imshow(img_rgb), plt.title("Original")
-plt.axis('off')
-plt.subplot(232), plt.imshow(lowpass), plt.title("Low Pass Filter (3x3)")
-plt.axis('off')
-plt.subplot(233), plt.imshow(highpass), plt.title("High Pass Filter (3x3)")
-plt.axis('off')
-plt.subplot(234), plt.imshow(gauss_lp), plt.title("Gaussian Low Pass")
-plt.axis('off')
-plt.subplot(235), plt.imshow(gauss_hp), plt.title("Gaussian High Pass")
-plt.axis('off')
+
+plt.subplot(2, 3, 1)
+plt.imshow(image, cmap="gray")
+plt.title("Input Image")
+plt.axis("off")
+
+plt.subplot(2, 3, 2)
+plt.imshow(image_lowpass, cmap="gray")
+plt.title("Low Pass Filter")
+plt.axis("off")
+
+plt.subplot(2, 3, 3)
+plt.imshow(image_highpass, cmap="gray")
+plt.title("High Pass Filter")
+plt.axis("off")
+
+plt.subplot(2, 3, 4)
+plt.imshow(image_lowpass_gaussian, cmap="gray")
+plt.title("Lowpass Gaussian Filter")
+plt.axis("off")
+
+plt.subplot(2, 3, 5)
+plt.imshow(image_highpass_gaussian, cmap="gray")
+plt.title("Highpass Gaussian Filter")
+plt.axis("off")
+
 plt.tight_layout()
 plt.show()
